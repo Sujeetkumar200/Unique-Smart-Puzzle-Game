@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Echo Weaver - Sabse Unique Smart Puzzle Game. Apne Echoes banakar reality weave karo. Advanced Canvas + Particle Physics wala addictive brain game.">
+  <meta name="keywords" content="echo weaver, puzzle game online, smart puzzle, echo puzzle, canvas game, brain game, unique puzzle, free online game, neon puzzle game, time echo game">
+  <title>Echo Weaver - Unique Echo Puzzle Game | Smart Brain Game Online</title>
+  
+  <meta property="og:title" content="Echo Weaver - Unique Echo Puzzle Game">
+  <meta property="og:description" content="Apne moves ke echoes create karke complex puzzles solve karo. Advanced particle physics aur neon animations ke saath.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://echoweaver.online">
+  <meta property="og:image" content="https://echoweaver.online/preview.jpg">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #0a0a1f 0%, #1a0033 100%);
+      color: #00ffff;
+      text-align: center;
+      overflow: hidden;
+      min-height: 100vh;
+    }
+    h1 {
+      margin: 20px 0 8px;
+      font-size: 2.9em;
+      background: linear-gradient(90deg, #00ffff, #ff00ff, #00ffff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 40px rgba(0,255,255,0.7);
+    }
+    #game-container {
+      position: relative;
+      width: 620px;
+      margin: 10px auto;
+      background: #0f0f2b;
+      border: 5px solid #00ffff;
+      border-radius: 22px;
+      box-shadow: 0 0 60px rgba(0,255,255,0.7);
+    }
+    canvas { display: block; border-radius: 16px; touch-action: none; }
+    .controls button {
+      padding: 12px 24px;
+      margin: 6px;
+      background: transparent;
+      color: #00ffff;
+      border: 2px solid #00ffff;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: 0.4s;
+      font-weight: bold;
+    }
+    .controls button:hover {
+      background: #00ffff;
+      color: #111;
+      transform: scale(1.05);
+    }
+    #status { margin: 15px; font-size: 1.35em; min-height: 50px; text-shadow: 0 0 20px #ff00ff; }
+  </style>
+</head>
+<body>
+  <h1>Echo Weaver</h1>
+  <p>Apne Echoes se Reality Weave Karo</p>
+
+  <div id="game-container">
+    <canvas id="gameCanvas" width="600" height="600"></canvas>
+  </div>
+
+  <div id="status">Level <span id="level">1</span> — Neon block ko goal tak le jao</div>
+
+  <div class="controls">
+    <button onclick="recordEcho()">Create Echo</button>
+    <button onclick="activateEchoes()">Activate Echoes</button>
+    <button onclick="resetLevel()">Reset</button>
+    <button onclick="nextLevel()">Next Level →</button>
+  </div>
+
+  <div style="margin-top:15px; font-size:0.95em; opacity:0.8;">
+    High Score: <span id="highscore">0</span>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const gridSize = 7;
+    const cellSize = canvas.width / gridSize;
+
+    let player = { x: 1, y: 1 };
+    let goal = { x: 5, y: 5 };
+    let echoes = [];
+    let particles = [];
+    let currentLevel = 1;
+    let isDragging = false;
+    let highScore = parseInt(localStorage.getItem('ewHighScore') || '0');
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playSound(freq, duration, type = 'sine', vol = 0.3) {
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.value = vol;
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start();
+        setTimeout(() => osc.stop(), duration);
+      } catch(e) {}
+    }
+
+    class Particle {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 7;
+        this.vy = (Math.random() - 0.5) * 7;
+        this.life = 65;
+        this.color = color;
+        this.size = Math.random() * 7 + 4;
+      }
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.18;      // Gravity
+        this.vx *= 0.985;     // Friction
+        this.life--;
+      }
+      draw() {
+        ctx.globalAlpha = this.life / 65;
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = this.color;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+      }
+    }
+
+    function createExplosion(x, y, color, count = 35) {
+      for (let i = 0; i < count; i++) {
+        particles.push(new Particle(x, y, color));
+      }
+    }
+
+    function drawNeon(x, y, color, isEcho = false) {
+      const px = x * cellSize + 12;
+      const py = y * cellSize + 12;
+      const sz = cellSize - 24;
+      const pulse = isEcho ? Math.sin(Date.now() / 180) * 0.12 + 0.88 : 1;
+
+      ctx.shadowColor = color;
+      ctx.shadowBlur = isEcho ? 32 : 48;
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = color;
+      ctx.fillRect(px, py, sz, sz);
+
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(px + 6, py + 6, sz - 12, sz - 12);
+      ctx.globalAlpha = 1;
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = "rgba(60,80,120,0.5)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= gridSize; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cellSize, 0);
+        ctx.lineTo(i * cellSize, canvas.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * cellSize);
+        ctx.lineTo(canvas.width, i * cellSize);
+        ctx.stroke();
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+
+      echoes.forEach(e => drawNeon(e.x, e.y, "#00ffcc", true));
+      drawNeon(goal.x, goal.y, "#ffff00");
+      drawNeon(player.x, player.y, "#ff00ff");
+
+      particles = particles.filter(p => p.life > 0);
+      particles.forEach(p => { p.update(); p.draw(); });
+    }
+
+    function recordEcho() {
+      echoes.push({ x: player.x, y: player.y });
+      const cx = player.x * cellSize + cellSize / 2;
+      const cy = player.y * cellSize + cellSize / 2;
+      createExplosion(cx, cy, "#00ffcc", 28);
+      playSound(1100, 90);
+    }
+
+    function activateEchoes() {
+      if (echoes.length === 0) return;
+      playSound(450, 250, 'triangle');
+      let delay = 0;
+      echoes.forEach(e => {
+        setTimeout(() => {
+          createExplosion(e.x * cellSize + cellSize/2, e.y * cellSize + cellSize/2, "#00ffff", 25);
+          e.x = (e.x + 2) % (gridSize - 1);
+          e.y = (e.y + 1) % (gridSize - 1);
+        }, delay);
+        delay += 220;
+      });
+    }
+
+    function celebrateWin() {
+      for (let i = 0; i < 12; i++) {
+        setTimeout(() => {
+          createExplosion(Math.random() * canvas.width, Math.random() * (canvas.height * 0.7), "#ffff00", 30);
+          createExplosion(Math.random() * canvas.width, Math.random() * (canvas.height * 0.7), "#ff00ff", 25);
+        }, i * 90);
+      }
+      playSound(700, 600, 'sine', 0.5);
+      document.getElementById('status').innerHTML = `🎉 Level ${currentLevel} MASTERED!`;
+
+      if (currentLevel > highScore) {
+        highScore = currentLevel;
+        localStorage.setItem('ewHighScore', highScore);
+        document.getElementById('highscore').textContent = highScore;
+      }
+    }
+
+    function handleMove(newX, newY) {
+      if (newX < 0 || newX >= gridSize || newY < 0 || newY >= gridSize) return;
+      if (newX === player.x && newY === player.y) return;
+
+      player.x = newX;
+      player.y = newY;
+
+      if (Math.random() > 0.55) recordEcho();
+      draw();
+
+      if (player.x === goal.x && player.y === goal.y) {
+        celebrateWin();
+      }
+    }
+
+    // Mouse Controls
+    canvas.addEventListener('mousedown', e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / cellSize);
+      const y = Math.floor((e.clientY - rect.top) / cellSize);
+      if (x === player.x && y === player.y) isDragging = true;
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const nx = Math.floor((e.clientX - rect.left) / cellSize);
+      const ny = Math.floor((e.clientY - rect.top) / cellSize);
+      handleMove(nx, ny);
+    });
+
+    canvas.addEventListener('mouseup', () => { isDragging = false; });
+    canvas.addEventListener('mouseleave', () => { isDragging = false; });
+
+    // Mobile Touch Swipe
+    let touchStartX = 0, touchStartY = 0;
+    canvas.addEventListener('touchstart', e => {
+      const rect = canvas.getBoundingClientRect();
+      touchStartX = Math.floor((e.touches[0].clientX - rect.left) / cellSize);
+      touchStartY = Math.floor((e.touches[0].clientY - rect.top) / cellSize);
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', e => {
+      const rect = canvas.getBoundingClientRect();
+      const endX = Math.floor((e.changedTouches[0].clientX - rect.left) / cellSize);
+      const endY = Math.floor((e.changedTouches[0].clientY - rect.top) / cellSize);
+
+      if (touchStartX === player.x && touchStartY === player.y) {
+        handleMove(endX, endY);
+      }
+    }, { passive: true });
+
+    // Keyboard
+    document.addEventListener('keydown', e => {
+      let nx = player.x, ny = player.y;
+      if (['ArrowLeft','a','A'].includes(e.key)) nx--;
+      if (['ArrowRight','d','D'].includes(e.key)) nx++;
+      if (['ArrowUp','w','W'].includes(e.key)) ny--;
+      if (['ArrowDown','s','S'].includes(e.key)) ny++;
+
+      handleMove(nx, ny);
+
+      if (e.key.toLowerCase() === 'e') recordEcho();
+      if (e.key.toLowerCase() === 'r') activateEchoes();
+    });
+
+    function resetLevel() {
+      player = { x: 1, y: 1 };
+      echoes = [];
+      particles = [];
+      document.getElementById('status').innerHTML = `Level ${currentLevel} — Neon block drag karein`;
+      draw();
+    }
+
+    function nextLevel() {
+      currentLevel++;
+      document.getElementById('level').textContent = currentLevel;
+      goal = { x: Math.floor(Math.random() * 4) + 3, y: Math.floor(Math.random() * 4) + 3 };
+      resetLevel();
+    }
+
+    function gameLoop() {
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Initialize
+    document.getElementById('highscore').textContent = highScore;
+    gameLoop();
+  </script>
+</body>
+</html>
